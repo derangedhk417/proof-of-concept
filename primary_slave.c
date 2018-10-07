@@ -1,27 +1,8 @@
-// Copyright 2018 Adam Robinson
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy of 
-// this software and associated documentation files (the "Software"), to deal in the 
-// Software without restriction, including without limitation the rights to use, copy, 
-// modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, 
-// and to permit persons to whom the Software is furnished to do so, subject to the 
-// following conditions:
-
-// The above copyright notice and this permission notice shall be included in all 
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
-// PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
-// HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF 
-// CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE 
-// OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #include "mpi_controller.h"
 #include <mpi.h>
 #include <stdio.h>
 
-#define MSG_COUNT 10
+#define MSG_COUNT 50
 
 int main(int argc, char ** argv) {
 	MPI_Init(NULL, NULL);
@@ -52,11 +33,11 @@ int main(int argc, char ** argv) {
 			int code;
 			int length;
 			int type;
-			float * matrix;
+			double * matrix;
 			
 			matrix = recvMessage(inst, &code, &length, &type);
 
-			MPI_Send(matrix, 1024*6000, MPI_FLOAT, proc, 1, MPI_COMM_WORLD);
+			MPI_Send(matrix, 1024*6000, MPI_DOUBLE, proc, 1, MPI_COMM_WORLD);
 
 			free(matrix);
 		}
@@ -67,26 +48,26 @@ int main(int argc, char ** argv) {
 			int code;
 			int length;
 			int type;
-			float * array;
+			double * array;
 			
 			array = recvMessage(inst, &code, &length, &type);
 
 			for (int proc = 1; proc < world_size; ++proc) {
-				MPI_Send(array, 1024, MPI_FLOAT, proc, 2, MPI_COMM_WORLD);
+				MPI_Send(array, 1024, MPI_DOUBLE, proc, 2, MPI_COMM_WORLD);
 			}
 			free(array);
 
-			float * results = malloc(sizeof(float) * (world_size - 1));
+			double * results = malloc(sizeof(double) * (world_size - 1));
 
 			for (int proc = 1; proc < world_size; ++proc) {
-				float sum;
+				double sum;
 				// tag 2 = processed result
-				MPI_Recv(&sum, 1, MPI_FLOAT, proc, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				MPI_Recv(&sum, 1, MPI_DOUBLE, proc, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				results[proc - 1] = sum;
 			}
 
 			// Send the results back.
-			sendMessage(inst, results, 2, sizeof(float) * (world_size - 1), MSG_TYPE_FLOAT);
+			sendMessage(inst, results, 2, sizeof(double) * (world_size - 1), MSG_TYPE_DOUBLE);
 
 			free(results);
 		}
@@ -96,17 +77,17 @@ int main(int argc, char ** argv) {
 	} else {
 		// First we wait for a message containing the matrix to 
 		// work with. 
-		float * matrix = malloc(sizeof(float)*1024*6000);
+		double * matrix = malloc(sizeof(double)*1024*6000);
 
 		// tag 1 = matrix send
-		MPI_Recv(matrix, 1024*6000, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		MPI_Recv(matrix, 1024*6000, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 		// tag 2 = process something
 		for (int i = 0; i < MSG_COUNT; ++i) {
-			float * array = malloc(sizeof(float)*1024);
-			MPI_Recv(array, 1024, MPI_FLOAT, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			double * array = malloc(sizeof(double)*1024);
+			MPI_Recv(array, 1024, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-			float result = 0.0;
+			double result = 0.0;
 			for (int j = 0; j < 6000; ++j) {
 				for (int k = 0; k < 1024; ++k) {
 					result += matrix[j*1024 + k]*array[k];
@@ -114,7 +95,7 @@ int main(int argc, char ** argv) {
 			}
 
 			free(array);
-			MPI_Send(&result, 1, MPI_FLOAT, 0, 2, MPI_COMM_WORLD);
+			MPI_Send(&result, 1, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD);
 		}
 
 		free(matrix);

@@ -9,7 +9,7 @@ from random import uniform as randf
 from matplotlib import pyplot as plt
 from timeit import default_timer as timer
 
-MSG_COUNT = 10
+MSG_COUNT = 50
 
 # compiled library file
 libname = 'testlib.so'
@@ -23,11 +23,11 @@ nProcesses = lib_init()
 print("%d processes launched"%nProcesses)
 
 sendMatrix = lib.sendMatrix
-sendMatrix.argtypes = [ctl.ndpointer(dtype=ctypes.c_float)]
+sendMatrix.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
 
 processArray = lib.processArray
-processArray.argtypes = [ctl.ndpointer(dtype=ctypes.c_float)]
-processArray.restype  = ctypes.POINTER(ctypes.c_float*(nProcesses - 1))
+processArray.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
+processArray.restype  = ctypes.POINTER(ctypes.c_double*(nProcesses - 1))
 
 print("Creating matrices")
 
@@ -35,8 +35,8 @@ matrices = []
 for i in range(nProcesses - 1):
 	mat = []
 	for j in range(6000*1024):
-		mat.append(float(randf(-10.0, 10.0)))
-	matrices.append(np.array(mat, np.float32))
+		mat.append(randf(-10.0, 10.0))
+	matrices.append(np.array(mat, np.float64))
 
 
 print("Sending matrices")
@@ -51,8 +51,8 @@ print("Generating input arrays")
 for i in range(MSG_COUNT):
 	current = []
 	for j in range(1024):
-		current.append(float(randf(-10.0, 10.0)))
-	inputs.append(np.array(current, np.float32))
+		current.append(randf(-10.0, 10.0))
+	inputs.append(np.array(current, np.float64))
 
 print("Processing values")
 
@@ -82,17 +82,25 @@ end_py = timer()
 
 print("Verification computations done. Comparing.")
 
+error_count = 0
+
 for i, j in zip(results, expected_results):
 	if (list(i) != list(j)):
 		print("Computation error with array.")
 		print("\tExpected: %s"%str(j))
 		print("\tWas:      %s"%str(list(i)))
-		break
+		error_count += 1
 
 print("All verification complete.")
 
-print("C took %fs"%(end_c - start_c))
-print("Python took %fs"%(end_py - start_py))
+if (error_count == 0):
+	print("No error detected.")
+else:
+	print("%d erroneous calculations detected.")
+
+print("Timing:")
+print("\tC      : %fs"%(end_c - start_c))
+print("\tPython : %fs"%(end_py - start_py))
 
 # V_LJ = lib.LennardJonesPotential
 # V_LJ.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_double]
