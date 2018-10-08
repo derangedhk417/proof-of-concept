@@ -24,7 +24,7 @@ struct MPIController {
 	                    // prefix to the names of the four semaphores
 	                    // used for communication.
 
-	bool is_controller;   // TRUE when initializes as controller,
+	bool is_controller;   // TRUE when initialized as controller,
 	                      // FALSE when initialized as child.
 
 	sem_t * controllerSent; // Waited on by the child and triggered 
@@ -42,7 +42,8 @@ struct MPIController {
 	                            // messages are received by the parent 
 	                            // before execution continues.
 
-	int fd;               
+	int fd;            // File descriptor attached to the shared memory
+	                   // that is used to pass message contents.
 
 	int * messageCode; // Stores the number used to identify the type
 	                   // of message being sent. Meaning is used defined.
@@ -313,17 +314,13 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 //     - name: user defined unique string
 //             must be the same in both the controller and child processes
 //
-//     - rawAddressString: The stringified address of the shared memory
-//                         location, passed in by the CreateControllerInstance
-//                         function. Should be argv[argc - 3], argv[argc - 2], argv[argc - 1];
 struct MPIController * createChildInstance(char * name) {
 	// We need to do the following:
 	//     1) create and instance of MPIController
 	//     2) get copies of the semaphores from the system
 	//        they should have already been initialized by the
 	//        controller
-	//     3) read the shared memory address and construct
-	//        a pointer from it
+	//     3) get a pointer to each chunk of shared memory
 	//     4) trigger the instance->childReceived semaphore
 	//        to inform the controller that the system has
 	//        initialized 
@@ -343,7 +340,6 @@ struct MPIController * createChildInstance(char * name) {
 	strcat(conSentName, "_con_sent");
 
 	instance->controllerSent = sem_open(conSentName, 0); 
-	// initialized open, as no data is currently pending a send
 
 	char * childRecvName = malloc(sizeof(char) * 128);
 	memset(childRecvName, 0, sizeof(char) * 128);
@@ -351,8 +347,6 @@ struct MPIController * createChildInstance(char * name) {
 	strcat(childRecvName, name);
 	strcat(childRecvName, "_child_recv");
 	instance->childReceived = sem_open(childRecvName, 0);
-	// initialized blocked, as the child must unblock it to indicate that
-	// the child process is ready
 
 	char * childSentName = malloc(sizeof(char) * 128);
 	memset(childSentName, 0, sizeof(char) * 128);
@@ -399,11 +393,8 @@ struct MPIController * createChildInstance(char * name) {
 // Can be called on either a child or controller, doesn't matter.
 // Internally the function will allocate some shared memory and 
 // copy the message to it before triggering a semaphore. The caller
-// it responsible for deallocating the message that they pass in.
+// is responsible for deallocating the message that they pass in.
 void sendMessage(struct MPIController * instance, void * message, int code, int length, int type) {
-	// We need to generate a name for the file that the 
-	// message memory will be associated with.
-
 	void * sharedMessage = reallocShared(length, instance->fd);
 	memcpy(sharedMessage, message, length);
 
@@ -422,7 +413,6 @@ void sendMessage(struct MPIController * instance, void * message, int code, int 
 	// Now we free the memory.
 	// By this point the receiver will already
 	// have it copied to non-shared memory.
-	// shm_unlink(fileName);
 	munmap(sharedMessage, length);
 }
 
@@ -442,7 +432,7 @@ void * recvMessage(struct MPIController * instance, int * code, int * length, in
 	*type   = *instance->messageType;
 
 	// Now we need to map the new data coming in
-	// so that it can be accesed.
+	// so that it can be accessed.
 	void * msg = reallocShared(*length, instance->fd);
 
 	// Allocate some process memory for it and copy it into
@@ -520,4 +510,3 @@ void destroyInstance(struct MPIController * instance) {
 
 	free(instance);
 }
-
