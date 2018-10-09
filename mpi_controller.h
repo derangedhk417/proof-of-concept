@@ -102,7 +102,13 @@ void * mallocShared(size_t size, char * name) {
 	return result;
 }
 
+// Used to reallocate memory associated with the file
+// descriptor that is assigned to the instance. This
+// memory is used for passing messages between the 
+// controller and the child.
 void * reallocShared(size_t size, int fd) {
+
+	// Resize the fd
 	if (ftruncate(fd, size) == -1) {
 		printf("ftruncate failed\n");
 	}
@@ -112,6 +118,7 @@ void * reallocShared(size_t size, int fd) {
 
 	int visibility = MAP_SHARED;
 
+	// reallocate the shared memory
 	void * result = mmap(NULL, size, protection, visibility, fd, 0);
 
 	if (result == (void *)-1) {
@@ -138,7 +145,7 @@ char * getMessageFDNameLocationFDName(char * base) {
 
 // Constructs the name that should be used to identify
 // the file descriptor for the shared memory used as
-// a location for message size indicators being passes
+// a location for message size indicators being passed
 // between processes.
 char * getMessageSizeFDName(char * base) {
 	char * sizeFDName = malloc(sizeof(char) * 128);
@@ -151,7 +158,7 @@ char * getMessageSizeFDName(char * base) {
 
 // Constructs the name that should be used to identify
 // the file descriptor for the shared memory used as
-// a location for message size indicators being passes
+// a location for message code indicators being passed
 // between processes.
 char * getMessageCodeFDName(char * base) {
 	char * sizeFDName = malloc(sizeof(char) * 128);
@@ -164,7 +171,7 @@ char * getMessageCodeFDName(char * base) {
 
 // Constructs the name that should be used to identify
 // the file descriptor for the shared memory used as
-// a location for message size indicators being passes
+// a location for message type indicators being passed
 // between processes.
 char * getMessageTypeFDName(char * base) {
 	char * typeFDName = malloc(sizeof(char) * 128);
@@ -180,22 +187,18 @@ char * getMessageTypeFDName(char * base) {
 // ----------------------------------------------
 // These two functions need to be called in the 
 // controller application and the Rank0 thread
-// of the MPI world at roughly the same time.
+// of the MPI world.
 // CreateControllerInstance will call MPIEXEC with 
-// specified arguments and add the address of 
-// a shared memory location to the end of the 
-// arugment list. It is then expected that the 
-// child program will pass this address to the
-// CreateChildInstance function. At this point
-// the Rank0 process should be able to access
+// specified arguments. At this point
+// the Rank0 process should call createChildInstance.
+// Once called, it will be able to access
 // the shared memory for communication and the
 // semphores for synchronization. 
 
 
-// Called in the controlling program (not started with MPIEXEC).
-// Will start an MPI world as a child process using MPIEXEC and
-// will pass the address of some shared memory into it. Will then
-// wait for the child process to call CreateChildInstance with 
+// Called in the controlling program (the one not started with MPIEXEC).
+// Will start an MPI world as a child process using MPIEXEC. Will then
+// wait for the child process to call createChildInstance with 
 // the same name argument. CreateChildInstance will trigger the
 // childReceived semaphore and the controller instance will 
 // know that the child has started.
@@ -223,7 +226,6 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 	instance->system_name   = name;
 
 	// initialize the semaphores
-
 	
 	char * conSentName = malloc(sizeof(char) * 128);
 	memset(conSentName, 0, sizeof(char) * 128);
@@ -279,14 +281,8 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 
 	// now that everything is in place, we can call MPIEXEC.
 
-	// we need to construct the argument string and make
-	// sure that the stringified address of the memory is
-	// included.
+	// we need to construct the argument string for MPIEXEC.
 
-	
-
-	// We need to add the stringified address of the shared
-	// memory as the last argument
 	char * argString = malloc(sizeof(char) * 2048);
 	memset(argString, 0, sizeof(char) * 2048);
 	strcat(argString, "mpirun ");
@@ -307,7 +303,7 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 	return instance;
 }
 
-// Called by the Rank0 process of the MPI world initiated by CreateControllerInstance.
+// Called by the Rank0 process of the MPI world initiated by createControllerInstance.
 //
 // parameters:
 //     - name: user defined unique string
@@ -393,6 +389,8 @@ struct MPIController * createChildInstance(char * name) {
 // Internally the function will allocate some shared memory and 
 // copy the message to it before triggering a semaphore. The caller
 // is responsible for deallocating the message that they pass in.
+// This function will halt execution until the receiver confirms
+// that they have received the message.
 void sendMessage(struct MPIController * instance, void * message, int code, int length, int type) {
 	void * sharedMessage = reallocShared(length, instance->fd);
 	memcpy(sharedMessage, message, length);
