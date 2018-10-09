@@ -232,7 +232,7 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 	strcat(conSentName, "_con_sent");
 
 	instance->controllerSent = sem_open(conSentName, O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO, 0); 
-	// initialized open, as no data is currently pending a send
+	
 
 	char * childRecvName = malloc(sizeof(char) * 128);
 	memset(childRecvName, 0, sizeof(char) * 128);
@@ -240,8 +240,7 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 	strcat(childRecvName, name);
 	strcat(childRecvName, "_child_recv");
 	instance->childReceived = sem_open(childRecvName, O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO, 0);
-	// initialized blocked, as the child must unblock it to indicate that
-	// the child process is ready
+	
 
 	char * childSentName = malloc(sizeof(char) * 128);
 	memset(childSentName, 0, sizeof(char) * 128);
@@ -290,7 +289,7 @@ struct MPIController * createControllerInstance(char * name, char * MPIArguments
 	// memory as the last argument
 	char * argString = malloc(sizeof(char) * 2048);
 	memset(argString, 0, sizeof(char) * 2048);
-	strcat(argString, "mpiexec ");
+	strcat(argString, "mpirun ");
 	strcat(argString, MPIArguments);
 	strcat(argString, " &"); // Necessary for it to run asynchronously.
 

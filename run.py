@@ -1,25 +1,35 @@
 import numpy.ctypeslib as ctl
 import numpy as np
 import ctypes
+from ctypes import *
 import code
 import scipy.optimize
+import sys
 from scipy.optimize import curve_fit
 from random import randint as rand
 from random import uniform as randf
 from matplotlib import pyplot as plt
 from timeit import default_timer as timer
 
-MSG_COUNT = 50
+MSG_COUNT = 5
+WIDTH     = 1024
+ROWS      = 6000
 
 libname = 'testlib.so'
 libdir  = './'
 lib     = ctl.load_library(libname, libdir)
 
-lib_init         = lib.init
-lib_init.restype = ctypes.c_int
-nProcesses = lib_init()
+arg_string = ' '.join(sys.argv[1:])
 
-print("%d processes launched"%nProcesses)
+lib_init          = lib.init
+lib_init.argtypes = [c_char_p]
+lib_init.restype  = ctypes.c_int
+
+arg_string = arg_string + '\0'
+
+nProcesses = lib_init(arg_string.encode())
+
+print("[PYTHON] %d processes launched"%nProcesses)
 
 sendMatrix = lib.sendMatrix
 sendMatrix.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
@@ -28,32 +38,32 @@ processArray = lib.processArray
 processArray.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
 processArray.restype  = ctypes.POINTER(ctypes.c_double*(nProcesses - 1))
 
-print("Creating matrices")
+print("[PYTHON] Creating matrices")
 
 matrices = []
 for i in range(nProcesses - 1):
 	mat = []
-	for j in range(6000*1024):
+	for j in range(WIDTH*ROWS):
 		mat.append(randf(-10.0, 10.0))
 	matrices.append(np.array(mat, np.float64))
 
 
-print("Sending matrices")
+print("[PYTHON] Sending matrices")
 
 for i in matrices:
 	sendMatrix(i)
 
 inputs  = []
 
-print("Generating input arrays")
+print("[PYTHON] Generating input arrays")
 
 for i in range(MSG_COUNT):
 	current = []
-	for j in range(1024):
+	for j in range(WIDTH):
 		current.append(randf(-10.0, 10.0))
 	inputs.append(np.array(current, np.float64))
 
-print("Processing values")
+print("[PYTHON] Processing values")
 
 
 results = []
@@ -63,7 +73,7 @@ for i in inputs:
 	results.append(processArray(i).contents)
 end_c = timer()
 
-print("Processing complete, verifying data.")
+print("[PYTHON] Processing complete, verifying data.")
 
 
 expected_results = []
@@ -72,9 +82,9 @@ for ip in inputs:
 	ip_results = []
 	for matrix in matrices:
 		result = 0.0
-		for j in range(6000):
-			for k in range(1024):
-				result += matrix[j*1024 + k] * ip[k]
+		for j in range(ROWS):
+			for k in range(WIDTH):
+				result += matrix[j*WIDTH + k] * ip[k]
 		ip_results.append(result)
 	expected_results.append(ip_results)
 end_py = timer()

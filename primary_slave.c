@@ -2,9 +2,14 @@
 #include <mpi.h>
 #include <stdio.h>
 
-#define MSG_COUNT 50
+#define MSG_COUNT 5
+
+#define WIDTH 1024
+#define ROWS  6000
 
 int main(int argc, char ** argv) {
+	
+
 	MPI_Init(NULL, NULL);
 
 	int world_size;
@@ -16,6 +21,11 @@ int main(int argc, char ** argv) {
 	char processor_name[MPI_MAX_PROCESSOR_NAME];
 	int name_len;
 	MPI_Get_processor_name(processor_name, &name_len);
+
+	char * hostname = malloc(sizeof(char) * 128);
+	memset(hostname, 0, sizeof(char) * 128);
+	gethostname(hostname, sizeof(char) * 128);
+	printf("[MPI] Rank %d started on %s\n", world_rank, hostname);
 
 	if (world_rank == 0) {
 		struct MPIController * inst = createChildInstance("test_controller");
@@ -37,10 +47,16 @@ int main(int argc, char ** argv) {
 			
 			matrix = recvMessage(inst, &code, &length, &type);
 
-			MPI_Send(matrix, 1024*6000, MPI_DOUBLE, proc, 1, MPI_COMM_WORLD);
+			printf("[MPI] Rank 0 received matrix, sending to rank %d\n", proc);
+
+			MPI_Send(matrix, WIDTH*ROWS, MPI_DOUBLE, proc, 1, MPI_COMM_WORLD);
+
+			printf("[MPI] Rank 0 finished sending matrix to rank %d\n", proc);
 
 			free(matrix);
 		}
+
+		printf("[MPI] Done receiving matrices\n");
 
 		// Now we wait for arrays to be sent in to process.
 
@@ -52,8 +68,12 @@ int main(int argc, char ** argv) {
 			
 			array = recvMessage(inst, &code, &length, &type);
 
+
+
 			for (int proc = 1; proc < world_size; ++proc) {
-				MPI_Send(array, 1024, MPI_DOUBLE, proc, 2, MPI_COMM_WORLD);
+				printf("[MPI] Received array %d, sending to rank %d\n", i, proc);
+				MPI_Send(array, WIDTH, MPI_DOUBLE, proc, 2, MPI_COMM_WORLD);
+				printf("[MPI] Finished sending array %d to rank %d\n", i, proc);
 			}
 			free(array);
 
@@ -63,12 +83,14 @@ int main(int argc, char ** argv) {
 				double sum;
 				// tag 2 = processed result
 				MPI_Recv(&sum, 1, MPI_DOUBLE, proc, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				printf("[MPI] Received result %d from rank %d\n", i, proc);
 				results[proc - 1] = sum;
 			}
 
 			// Send the results back.
+			printf("[MPI] Sending results back to controller\n");
 			sendMessage(inst, results, 2, sizeof(double) * (world_size - 1), MSG_TYPE_DOUBLE);
-
+			printf("[MPI] Finished sending results back to controller\n");
 			free(results);
 		}
 
@@ -77,25 +99,28 @@ int main(int argc, char ** argv) {
 	} else {
 		// First we wait for a message containing the matrix to 
 		// work with. 
-		double * matrix = malloc(sizeof(double)*1024*6000);
-
+		double * matrix = malloc(sizeof(double)*WIDTH*ROWS);
+		printf("[MPI] Rank %d waiting for matrix\n", world_rank);
 		// tag 1 = matrix send
-		MPI_Recv(matrix, 1024*6000, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+		MPI_Recv(matrix, WIDTH*ROWS, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		printf("[MPI] Rank %d received matrix\n", world_rank);
 		// tag 2 = process something
 		for (int i = 0; i < MSG_COUNT; ++i) {
-			double * array = malloc(sizeof(double)*1024);
-			MPI_Recv(array, 1024, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+			double * array = malloc(sizeof(double)*WIDTH);
+			printf("[MPI] Rank %d waiting for array\n", world_rank);
+			MPI_Recv(array, WIDTH, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			printf("[MPI] Rank %d received array\n", world_rank);
 			double result = 0.0;
-			for (int j = 0; j < 6000; ++j) {
-				for (int k = 0; k < 1024; ++k) {
-					result += matrix[j*1024 + k]*array[k];
+			for (int j = 0; j < ROWS; ++j) {
+				for (int k = 0; k < WIDTH; ++k) {
+					result += matrix[j*WIDTH + k]*array[k];
 				}
 			}
 
 			free(array);
+			printf("[MPI] Rank %d sending result\n", world_rank);
 			MPI_Send(&result, 1, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD);
+			printf("[MPI] Rank %d finished sending result\n", world_rank);
 		}
 
 		free(matrix);
