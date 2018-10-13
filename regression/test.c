@@ -59,9 +59,9 @@ void sendData(double * data) {
 		inst, 
 		data, 
 		SEND_DATA, 
-		sizeof(double) * dataPointCount * 2, // The "* 2" is there because 
-		MSG_TYPE_DOUBLE                      // we send x and y dimensions                                      
-	);                                       // in the same array.
+		sizeof(double) * dataPointCount,
+		MSG_TYPE_DOUBLE                                  
+	);
 }
 
 // Sends data from a particular model to the child nodes
@@ -74,7 +74,7 @@ double computeRMSE(double * data) {
 		inst, 
 		data, 
 		SEND_MODEL_FOR_RMSE_COMP, 
-		sizeof(double) * dataPointCount * 2, 
+		sizeof(double) * dataPointCount, 
 		MSG_TYPE_DOUBLE
 	);
 

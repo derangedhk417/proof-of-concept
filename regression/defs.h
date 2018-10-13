@@ -16,3 +16,7 @@
 // Message id used when the child nodes are
 // returning the RMSE data to the controller.
 #define RETURN_RMSE              4
+
+// A message with this id is sent to the child
+// when it is time to stop processing and exit.
+#define PROCESSING_DONE          5
