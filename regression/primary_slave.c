@@ -1,18 +1,11 @@
 #include "mpi_controller.h"
+#include "defs.h"
 #include <mpi.h>
 #include <stdio.h>
+#include <math.h>
 
-// This is the program that gets initialized with MPIRUN.
-// The rank0 process will call createChildInstance to 
-// initiate communication with the controller process.
-
-#define MSG_COUNT 5
-
-#define WIDTH 1024
-#define ROWS  6000
 
 int main(int argc, char ** argv) {
-	
 	// Basic MPI initialization stuff.
 	MPI_Init(NULL, NULL);
 
@@ -39,21 +32,46 @@ int main(int argc, char ** argv) {
 		struct MPIController * inst = createChildInstance("test_controller");
 
 		// The first thing we do is tell the controller how many
-		// MPI processes there are, so it can generate a set
-		// of matrices.
+		// MPI processes there are.
 
 		sendMessage(inst, &world_size, 1, sizeof(int), MSG_TYPE_INT);
 
-		// Now we need to wait for n matrices and send them
-		// each to a separate process.
+		int code;
+		int length;
+		int type;
+
+		// Now we wait for the length of the data to be sent in.
+		int * nDataPoints = recvMessage(inst, &code, &length, &type);
+
+		// Now we wait for the model data so that we can split it
+		// up and send it to the child nodes.
+
+		double * data = recvMessage(inst, &code, &length, &type);
+
+		// Now we split up the data and tell each child node
+		// how much data it is getting. Then we send the chunks
+		// to the child nodes.
+
+		int chunk_size = int(floor(nDataPoints / (world_size - 1)));
+		int extra      = nDataPoints -  (chunk_size * (world_size - 1));
+
+		// Now we need (world_size - 1) arrays of length chunk_size to
+		// send to the child nodes. We can keep the extra on the rank0
+		// and just have it process that.
+
+		double ** chunks = malloc(sizeof(double*) * (world_size - 1));
+		for (int i = 0; i < world_size - 1; ++i) {
+			chunks[i] = malloc(sizeof(double) * chunk_size * 2);
+
+			for (int j = 0; j < chunk_size; ++j) {
+				
+			}
+		}
+
+
 
 		for (int proc = 1; proc < world_size; ++proc) {
-			int code;
-			int length;
-			int type;
-			double * matrix;
 			
-			matrix = recvMessage(inst, &code, &length, &type);
 
 			printf("[MPI] Rank 0 received matrix, sending to rank %d\n", proc);
 
