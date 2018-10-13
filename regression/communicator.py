@@ -36,4 +36,19 @@ def init(directory, name, args):
 
 	functions = {}
 
+	cfg = lib.configureDataSize
+	cfg.argtypes = [ctypes.c_int]
+	functions['configureDataSize'] = cfg
+
+	sendData = lib.sendData
+	sendData.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
+	functions['sendData'] = sendData
+
+	compute = lib.computeRMSE
+	compute.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
+	compute.restype  = ctypes.c_double
+	functions['computeRMSE'] = computeRMSE
+
+	functions['finish'] = lib.finish
+
 	return (nProcesses, functions)

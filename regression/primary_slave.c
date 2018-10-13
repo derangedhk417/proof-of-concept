@@ -231,6 +231,22 @@ int main(int argc, char ** argv) {
 				break;
 			} else if (status.MPI_TAG == SEND_MODEL_FOR_RMSE_COMP) {
 				// Process the data and return a value.
+				double sum  = 0.0;
+				double diff = 0.0;
+				for (int i = 0; i < chunkSize; ++i) {
+					diff = chunk[i] - toProcess[i];
+					sum += diff*diff;
+				}
+
+				// Send the result back.
+				MPI_Send(
+					&sum,
+					1,
+					MPI_DOUBLE,
+					0,          
+					RETURN_RMSE,
+					MPI_COMM_WORLD
+				);
 			} else {
 				printf("Unrecognized MPI Tag (%d) sent to rank %d\n", 
 					status.MPI_TAG, world_rank);

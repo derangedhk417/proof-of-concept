@@ -86,3 +86,14 @@ double computeRMSE(double * data) {
 
 	return *result;
 }
+
+void finish() {
+	double unused = 0.0;
+	sendMessage(
+		inst, 
+		&unused, 
+		PROCESSING_DONE, 
+		sizeof(double), 
+		MSG_TYPE_DOUBLE
+	);
+}
