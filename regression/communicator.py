@@ -24,15 +24,9 @@ def init(directory, name, args):
 	# Specifies that the return type is int
 	lib_init.restype  = ctypes.c_int
 
-	# Here we construct a string from all of ther arguments
-	# so that it can be passed into the initialization 
-	# function.
-	arg_string = ' '.join(args)
-	arg_string = arg_string + '\0' # Make sure to null terminate it
-	                               # so the c code can handle it.
 
 	# Call the libary initialization function.
-	nProcesses = lib_init(arg_string.encode())
+	nProcesses = lib_init((args + '\0').encode())
 
 	functions = {}
 
@@ -47,7 +41,7 @@ def init(directory, name, args):
 	compute = lib.computeRMSE
 	compute.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
 	compute.restype  = ctypes.c_double
-	functions['computeRMSE'] = computeRMSE
+	functions['computeRMSE'] = compute
 
 	functions['finish'] = lib.finish
 

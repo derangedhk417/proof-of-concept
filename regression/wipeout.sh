@@ -1,0 +1,1 @@
+rm -rf /dev/shm/*regression_controller*

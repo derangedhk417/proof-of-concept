@@ -24,12 +24,12 @@ int main(int argc, char ** argv) {
 	char * hostname = malloc(sizeof(char) * 128);
 	memset(hostname, 0, sizeof(char) * 128);
 	gethostname(hostname, sizeof(char) * 128);
-	printf("[MPI] Rank %d started on %s\n", world_rank, hostname);
+	printf("[MPI %d] Started on %s.\n", world_rank, hostname);
 
 	if (world_rank == 0) {
 		// This is rank0, so we need to initialize the child instance
 		// for communicating with the controller.
-		struct MPIController * inst = createChildInstance("test_controller");
+		struct MPIController * inst = createChildInstance("regression_controller");
 
 		// The first thing we do is tell the controller how many
 		// MPI processes there are.
@@ -43,17 +43,25 @@ int main(int argc, char ** argv) {
 		// Now we wait for the length of the data to be sent in.
 		int * nDataPoints = recvMessage(inst, &code, &length, &type);
 
+		printf("[MPI 0] Received message indicating %d data points are being used.\n", 
+			*nDataPoints);
+
 		// Now we wait for the model data so that we can split it
 		// up and send it to the child nodes.
 
 		double * data = recvMessage(inst, &code, &length, &type);
 
+		printf("[MPI 0] Received array of size %ld.\n", length / sizeof(double));
+
 		// Now we split up the data and tell each child node
 		// how much data it is getting. Then we send the chunks
 		// to the child nodes.
 
-		int chunk_size = int(floor(*nDataPoints / (world_size - 1)));
+		int chunk_size = (int)(floor(*nDataPoints / (world_size - 1)));
 		int extra      = *nDataPoints - (chunk_size * (world_size - 1));
+
+		printf("[MPI 0] Splitting data into %d chunks of size %d with extra chunk %d.\n",
+			world_size - 1, chunk_size, extra);
 
 		// Now we need (world_size - 1) arrays of length chunk_size to
 		// send to the child nodes. We can keep the extra on the rank0
@@ -102,6 +110,8 @@ int main(int argc, char ** argv) {
 
 		free(data);
 
+		printf("[MPI 0] All data chunks have been initialized and sent.\n");
+
 		// Now we have all of the data necessary for processing in
 		// the memory of the respective processes. We can start waiting
 		// for chunks of data to compute RMSE values for.
@@ -109,7 +119,10 @@ int main(int argc, char ** argv) {
 		while (true) {
 			double * toProcess = recvMessage(inst, &code, &length, &type);
 
+			//printf("[MPI 0] Received message with length %d and tag %d.\n", length, code);
+
 			if (code == PROCESSING_DONE) {
+				printf("[MPI 0] Received PROCESSING_DONE, sending to children.\n");
 				// We are done processing, tell the other
 				// processes to quit.
 				double unused = 0.0;
@@ -123,16 +136,17 @@ int main(int argc, char ** argv) {
 						MPI_COMM_WORLD
 					);
 				}
+				printf("[MPI 0] Exiting.\n");
 				break;
 			} else if (code == SEND_MODEL_FOR_RMSE_COMP) {
 				// We have some data to process. Send it
 				// off to the processes. We need to split
 				// it up as we send it.
 				for (int proc = 1; proc < world_size; ++proc) {
-					int chunkAddress = sizeof(double) * chunk_size * (proc - 1);
 					// Now we send this chunk to the child node.
+					//printf("[MPI 0] Sending data chunk to process %d.\n", proc);
 					MPI_Send(
-						toProcess + chunkAddress, 
+						&toProcess[chunk_size * (proc - 1)], 
 						chunk_size, 
 						MPI_DOUBLE, 
 						proc,          
@@ -156,6 +170,7 @@ int main(int argc, char ** argv) {
 					sum += diff * diff;
 				}
 
+				//printf("[MPI 0] Reading results back from processes.\n");
 				// Here we read the results from each process.
 				double * tempResult = malloc(sizeof(double));
 				for (int proc = 1; proc < world_size; ++proc) {
@@ -227,6 +242,8 @@ int main(int argc, char ** argv) {
 				&status
 			);
 
+			//printf("[MPI %d] Received message with tag %d.\n", world_rank, status.MPI_TAG);
+
 			if (status.MPI_TAG == PROCESSING_DONE) {
 				break;
 			} else if (status.MPI_TAG == SEND_MODEL_FOR_RMSE_COMP) {
@@ -237,6 +254,8 @@ int main(int argc, char ** argv) {
 					diff = chunk[i] - toProcess[i];
 					sum += diff*diff;
 				}
+				//printf("[MPI %d] Done processing RMSE chunk.\n", 
+					//world_rank);
 
 				// Send the result back.
 				MPI_Send(

@@ -45,11 +45,13 @@ int init(char * args) {
 void configureDataSize(int nDataPoints) {
 	sendMessage(
 		inst, 
-		nDataPoints, 
+		&nDataPoints, 
 		SEND_DATA_DIMENSIONS, 
 		sizeof(int), 
 		MSG_TYPE_INT
 	);
+
+	dataPointCount = nDataPoints;
 }
 
 // Sends the x and y values of the data we are fitting to the
