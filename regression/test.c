@@ -98,4 +98,5 @@ void finish() {
 		sizeof(double), 
 		MSG_TYPE_DOUBLE
 	);
+	destroyInstance(inst);
 }

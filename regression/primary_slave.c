@@ -195,9 +195,6 @@ int main(int argc, char ** argv) {
 
 			free(toProcess);
 		}
-
-		destroyInstance(inst);
-		
 	} else {
 		// Here is where all of the child nodes do their processing.
 
@@ -245,6 +242,7 @@ int main(int argc, char ** argv) {
 			//printf("[MPI %d] Received message with tag %d.\n", world_rank, status.MPI_TAG);
 
 			if (status.MPI_TAG == PROCESSING_DONE) {
+				printf("[MPI %d] Exiting.\n", world_rank);
 				break;
 			} else if (status.MPI_TAG == SEND_MODEL_FOR_RMSE_COMP) {
 				// Process the data and return a value.
