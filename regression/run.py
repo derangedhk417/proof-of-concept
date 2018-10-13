@@ -61,6 +61,6 @@ print("\tC Error Minimization Took:      %fs"%(end_c - start_c))
 print("\tPython Error Minimization Took: %fs"%(end_py - start_py))
 
 yfit = model(xdata, res.x)
-plt.plot(xdata, yfit, '-')
+plt.plot(xdata, ydata, 'o', xdata, yfit, '-')
 plt.show()
 
