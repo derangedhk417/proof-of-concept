@@ -13,6 +13,9 @@ struct MPIController * inst;
 // The number of processes running.
 int processCount;  
 
+// Number of data points being processed.
+int pointCount;
+
 // Iniitializes the MPI comm world and returns the number
 // of processes running. The args argument of this function
 // is passed to mpirun as command line arguments.
@@ -65,6 +68,8 @@ void configureDataSize(double lowerBound, double upperBound, int points) {
 		sizeof(int), 
 		MSG_TYPE_INT
 	);
+
+	pointCount = points;
 }
 
 // Sends the x and y values of the data we are fitting to the
@@ -74,7 +79,7 @@ void sendData(double * data) {
 		inst, 
 		data, 
 		SEND_DATA, 
-		sizeof(double) * dataPointCount,
+		sizeof(double) * pointCount,
 		MSG_TYPE_DOUBLE                                  
 	);
 }

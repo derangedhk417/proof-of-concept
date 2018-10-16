@@ -46,9 +46,7 @@ def model(x, p):
 		, np.float64)
 
 def obj_c(p):
-	ymodel = model(xdata, p)
-	RMSE   = computeRMSE(ymodel)
-	return RMSE
+	return computeRMSE(p)
 
 def obj_py(p):
 	ymodel = model(xdata, p)

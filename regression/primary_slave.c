@@ -5,6 +5,10 @@
 #include <math.h>
 
 
+double fit_function(double *parameters) {
+	
+}
+
 int main(int argc, char ** argv) {
 	// Basic MPI initialization stuff.
 	MPI_Init(NULL, NULL);
@@ -41,9 +45,9 @@ int main(int argc, char ** argv) {
 		int type;
 
 		
-		float * lowerBound = recvMessage(inst, &code, &length, &type);
-		float * upperBound = recvMessage(inst, &code, &length, &type);
-		float * points     = recvMessage(inst, &code, &length, &type);
+		double * lowerBound = recvMessage(inst, &code, &length, &type);
+		double * upperBound = recvMessage(inst, &code, &length, &type);
+		double * points     = recvMessage(inst, &code, &length, &type);
 
 		printf("[MPI 0] Function range [%f, %f] with %d points.\n", 
 			*lowerBound, *upperBound, *points);
@@ -100,9 +104,8 @@ int main(int argc, char ** argv) {
 			// Now we need to compute and send the lower bound for
 			// this rank. The upper bound will follow naturally from
 			// the number of data points.
-
-			double rankLowerBound = i * (*upperBound - *lowerBound) / 
-			                           (*points * (*chunk_size));
+			double pointIncrement = (*upperBound - *lowerBound) / (*points);
+			double rankLowerBound = *lowerBound + (pointIncrement * chunk_size * i);
 
             MPI_Send(
 				&rankLowerBound, 
