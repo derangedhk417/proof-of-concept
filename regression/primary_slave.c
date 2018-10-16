@@ -219,6 +219,8 @@ int main(int argc, char ** argv) {
 					sum += diff * diff;
 				}
 
+				free(local);
+
 				//printf("[MPI 0] Reading results back from processes.\n");
 				// Here we read the results from each process.
 				double * tempResult = malloc(sizeof(double));
@@ -327,6 +329,8 @@ int main(int argc, char ** argv) {
 					diff = chunk[i] - data[i];
 					sum += diff*diff;
 				}
+
+				free(data);
 				//printf("[MPI %d] Done processing RMSE chunk.\n", 
 					//world_rank);
 
