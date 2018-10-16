@@ -49,7 +49,7 @@ void configureDataSize(double lowerBound, double upperBound, int points) {
 		inst, 
 		&lowerBound, 
 		SEND_DATA_DIMENSIONS, 
-		sizeof(int), 
+		sizeof(double), 
 		MSG_TYPE_DOUBLE
 	);
 
@@ -57,7 +57,7 @@ void configureDataSize(double lowerBound, double upperBound, int points) {
 		inst, 
 		&upperBound, 
 		SEND_DATA_DIMENSIONS, 
-		sizeof(int), 
+		sizeof(double), 
 		MSG_TYPE_DOUBLE
 	);
 

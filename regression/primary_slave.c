@@ -5,8 +5,22 @@
 #include <math.h>
 
 
-double fit_function(double *parameters) {
-	
+double fit_function(double x, double * p) {
+	return p[0]  * -pow((x - 1.0/1.0),  2.0) + 
+		   p[1]  *  pow((x - 1.0/2.0),  2.0) + 
+		   p[2]  * -pow((x - 1.0/3.0),  2.0) + 
+		   p[3]  *  pow((x - 1.0/4.0),  3.0) +
+		   p[4]  * -pow((x - 1.0/5.0),  2.0) +
+		   p[5]  *  pow((x - 1.0/6.0),  2.0) + 
+		   p[6]  * -pow((x - 1.0/7.0),  2.0) + 
+		   p[7]  *  pow((x - 1.0/8.0),  3.0) +
+		   p[8]  * -pow((x - 1.0/9.0),  2.0) + 
+		   p[9]  *  pow((x - 1.0/10.0), 2.0) +
+		   p[10] * -pow((x - 1.0/11.0), 2.0) + 
+		   p[11] *  pow((x - 1.0/12.0), 3.0) + 
+		   p[12] * -pow((x - 1.0/13.0), 2.0) + 
+		   p[13] *  pow((x - 1.0/14.0), 2.0) + 
+		   p[14] * -pow((x - 1.0/15.0), 2.0); 
 }
 
 int main(int argc, char ** argv) {
@@ -47,7 +61,7 @@ int main(int argc, char ** argv) {
 		
 		double * lowerBound = recvMessage(inst, &code, &length, &type);
 		double * upperBound = recvMessage(inst, &code, &length, &type);
-		double * points     = recvMessage(inst, &code, &length, &type);
+		int    * points     = recvMessage(inst, &code, &length, &type);
 
 		printf("[MPI 0] Function range [%f, %f] with %d points.\n", 
 			*lowerBound, *upperBound, *points);
@@ -107,9 +121,13 @@ int main(int argc, char ** argv) {
 			double pointIncrement = (*upperBound - *lowerBound) / (*points);
 			double rankLowerBound = *lowerBound + (pointIncrement * chunk_size * i);
 
+			double params[2];
+			params[0] = rankLowerBound;
+			params[1] = pointIncrement;
+
             MPI_Send(
-				&rankLowerBound, 
-				1, 
+				params, 
+				2, 
 				MPI_DOUBLE, 
 				i + 1,          // This is the node to send to.
 				SEND_DATA,      // We aren't sending to the rank0, 
@@ -127,6 +145,9 @@ int main(int argc, char ** argv) {
 		for (int i = 0; i < extra; ++i) {
 			extraData[i] = data[(chunk_size * (world_size - 1)) + i];
 		}
+
+		double pointIncrement  = (*upperBound - *lowerBound) / (*points);
+		double localLowerBound = *lowerBound + (pointIncrement * chunk_size * (world_size - 1));
 
 		free(data);
 
@@ -182,6 +203,12 @@ int main(int argc, char ** argv) {
 
 				// Now we calculate the data to do the RMSE computation for.
 
+				double x = localLowerBound;
+				double * local = malloc(sizeof(double) * extra);
+				for (int i = 0; i < extra; ++i, x += pointIncrement) {
+					local[i] = fit_function(x, toProcess);
+				}
+
 				// Now we do the calculations on the extra chunk
 				// of data.
 
@@ -209,7 +236,7 @@ int main(int argc, char ** argv) {
 				}
 				free(tempResult);
 
-				double rmse = sqrt(sum / *nDataPoints);
+				double rmse = sqrt(sum / *points);
 
 				// Send the RMSE value back to the controller.
 				sendMessage(inst, &rmse, RETURN_RMSE, sizeof(double), MSG_TYPE_DOUBLE);
@@ -222,8 +249,10 @@ int main(int argc, char ** argv) {
 
 		// The first message coming in should be size of the data we 
 		// will be processing.
-		int    chunkSize  = 0;
-		double lowerBound = 0.0;
+		int    chunkSize      = 0;
+		double lowerBound     = 0.0;
+		double pointIncrement = 0.0;
+
 		MPI_Recv(
 			&chunkSize,
 			1,
@@ -247,16 +276,21 @@ int main(int argc, char ** argv) {
 			MPI_STATUS_IGNORE
 		);
 
+		double params[2];
+
 		// Receive the lower bound for this rank.
 		MPI_Recv(
-			&lowerBound,
-			1,
+			params,
+			2,
 			MPI_DOUBLE,
 			0,
 			SEND_DATA,
 			MPI_COMM_WORLD,
 			MPI_STATUS_IGNORE
 		);
+
+		lowerBound     = params[0];
+		pointIncrement = params[1];
 
 		// Here we receive chunks of data to process until
 		// we receive a message to stop.
@@ -281,12 +315,16 @@ int main(int argc, char ** argv) {
 			} else if (status.MPI_TAG == SEND_MODEL_FOR_RMSE_COMP) {
 				// Generate the values to compute RMSE against.
 				
-
+				double x = lowerBound;
+				double * data = malloc(sizeof(double) * chunkSize);
+				for (int i = 0; i < chunkSize; ++i, x += pointIncrement) {
+					data[i] = fit_function(x, toProcess);
+				}
 				// Process the data and return a value.
 				double sum  = 0.0;
 				double diff = 0.0;
 				for (int i = 0; i < chunkSize; ++i) {
-					diff = chunk[i] - toProcess[i];
+					diff = chunk[i] - data[i];
 					sum += diff*diff;
 				}
 				//printf("[MPI %d] Done processing RMSE chunk.\n", 
