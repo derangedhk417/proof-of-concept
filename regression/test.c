@@ -3,13 +3,12 @@
 #include "mpi_controller.h"
 #include "defs.h"
 
+
+
 // This data structure, defined in mpi_controller.h, holds all
 // of the information necessary to communicate with the rank 0
 // process within the mpi world.
 struct MPIController * inst;
-
-// Stores the number of data points that we re working with.
-int dataPointCount;
 
 // The number of processes running.
 int processCount;  
@@ -42,16 +41,30 @@ int init(char * args) {
 // At this point, it is assumed that there are 
 // nDataPoints * sizeof(double) x - values and
 // nDataPoints * sizeof(double) y - values.
-void configureDataSize(int nDataPoints) {
+void configureDataSize(double lowerBound, double upperBound, int points) {
 	sendMessage(
 		inst, 
-		&nDataPoints, 
+		&lowerBound, 
+		SEND_DATA_DIMENSIONS, 
+		sizeof(int), 
+		MSG_TYPE_DOUBLE
+	);
+
+	sendMessage(
+		inst, 
+		&upperBound, 
+		SEND_DATA_DIMENSIONS, 
+		sizeof(int), 
+		MSG_TYPE_DOUBLE
+	);
+
+	sendMessage(
+		inst, 
+		&points, 
 		SEND_DATA_DIMENSIONS, 
 		sizeof(int), 
 		MSG_TYPE_INT
 	);
-
-	dataPointCount = nDataPoints;
 }
 
 // Sends the x and y values of the data we are fitting to the
@@ -66,17 +79,15 @@ void sendData(double * data) {
 	);
 }
 
-// Sends data from a particular model to the child nodes
-// so that they can compute the RMSE of it. The rank0
-// process will combine the result from each child node
-// into a sum and then compute the average of it before
-// returning it.
+// Sends the fit parameters to the rank0 process so that
+// they can be distributed to the other ranks and used to
+// compute RMSE.
 double computeRMSE(double * data) {
 	sendMessage(
 		inst, 
 		data, 
 		SEND_MODEL_FOR_RMSE_COMP, 
-		sizeof(double) * dataPointCount, 
+		sizeof(double) * PARAMETER_COUNT, 
 		MSG_TYPE_DOUBLE
 	);
 

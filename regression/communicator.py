@@ -31,7 +31,7 @@ def init(directory, name, args):
 	functions = {}
 
 	cfg = lib.configureDataSize
-	cfg.argtypes = [ctypes.c_int]
+	cfg.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_int]
 	functions['configureDataSize'] = cfg
 
 	sendData = lib.sendData

@@ -1,3 +1,5 @@
+#define PARAMETER_COUNT 15
+
 // Message id for when the size of the data is
 // being sent to the MPI nodes.
 #define SEND_DATA_DIMENSIONS     1

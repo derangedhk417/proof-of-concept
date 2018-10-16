@@ -40,11 +40,13 @@ int main(int argc, char ** argv) {
 		int length;
 		int type;
 
-		// Now we wait for the length of the data to be sent in.
-		int * nDataPoints = recvMessage(inst, &code, &length, &type);
+		
+		float * lowerBound = recvMessage(inst, &code, &length, &type);
+		float * upperBound = recvMessage(inst, &code, &length, &type);
+		float * points     = recvMessage(inst, &code, &length, &type);
 
-		printf("[MPI 0] Received message indicating %d data points are being used.\n", 
-			*nDataPoints);
+		printf("[MPI 0] Function range [%f, %f] with %d points.\n", 
+			*lowerBound, *upperBound, *points);
 
 		// Now we wait for the model data so that we can split it
 		// up and send it to the child nodes.
@@ -57,8 +59,8 @@ int main(int argc, char ** argv) {
 		// how much data it is getting. Then we send the chunks
 		// to the child nodes.
 
-		int chunk_size = (int)(floor(*nDataPoints / (world_size - 1)));
-		int extra      = *nDataPoints - (chunk_size * (world_size - 1));
+		int chunk_size = (int)(floor(*points / (world_size - 1)));
+		int extra      = *points - (chunk_size * (world_size - 1));
 
 		printf("[MPI 0] Splitting data into %d chunks of size %d with extra chunk %d.\n",
 			world_size - 1, chunk_size, extra);
@@ -95,6 +97,21 @@ int main(int argc, char ** argv) {
 				MPI_COMM_WORLD  // which is why this is i + 1 
 			);                  // instead of just i.
 
+			// Now we need to compute and send the lower bound for
+			// this rank. The upper bound will follow naturally from
+			// the number of data points.
+
+			double rankLowerBound = i * (*upperBound - *lowerBound) / 
+			                           (*points * (*chunk_size));
+
+            MPI_Send(
+				&rankLowerBound, 
+				1, 
+				MPI_DOUBLE, 
+				i + 1,          // This is the node to send to.
+				SEND_DATA,      // We aren't sending to the rank0, 
+				MPI_COMM_WORLD  // which is why this is i + 1 
+			);                  // instead of just i.
 			// Now that the data has been sent off,
 			// we can free it.
 			free(chunk);
@@ -146,8 +163,8 @@ int main(int argc, char ** argv) {
 					// Now we send this chunk to the child node.
 					//printf("[MPI 0] Sending data chunk to process %d.\n", proc);
 					MPI_Send(
-						&toProcess[chunk_size * (proc - 1)], 
-						chunk_size, 
+						toProcess, 
+						PARAMETER_COUNT, 
 						MPI_DOUBLE, 
 						proc,          
 						SEND_MODEL_FOR_RMSE_COMP,
@@ -155,10 +172,12 @@ int main(int argc, char ** argv) {
 					);
 				}
 
-				double * local = malloc(sizeof(double) * extra);
-				for (int i = 0; i < extra; ++i) {
-					local[i] = toProcess[(chunk_size * (world_size - 1)) + i];
-				}
+				// double * local = malloc(sizeof(double) * extra);
+				// for (int i = 0; i < extra; ++i) {
+				// 	local[i] = toProcess[(chunk_size * (world_size - 1)) + i];
+				// }
+
+				// Now we calculate the data to do the RMSE computation for.
 
 				// Now we do the calculations on the extra chunk
 				// of data.
@@ -200,7 +219,8 @@ int main(int argc, char ** argv) {
 
 		// The first message coming in should be size of the data we 
 		// will be processing.
-		int chunkSize = 0;
+		int    chunkSize  = 0;
+		double lowerBound = 0.0;
 		MPI_Recv(
 			&chunkSize,
 			1,
@@ -224,14 +244,25 @@ int main(int argc, char ** argv) {
 			MPI_STATUS_IGNORE
 		);
 
+		// Receive the lower bound for this rank.
+		MPI_Recv(
+			&lowerBound,
+			1,
+			MPI_DOUBLE,
+			0,
+			SEND_DATA,
+			MPI_COMM_WORLD,
+			MPI_STATUS_IGNORE
+		);
+
 		// Here we receive chunks of data to process until
 		// we receive a message to stop.
-		double * toProcess = malloc(sizeof(double) * chunkSize);
+		double * toProcess = malloc(sizeof(double) * PARAMETER_COUNT);
 		while (true) {
 			MPI_Status status;
 			MPI_Recv(
 				toProcess,
-				chunkSize,
+				PARAMETER_COUNT,
 				MPI_DOUBLE,
 				0,
 				MPI_ANY_TAG,
@@ -245,6 +276,9 @@ int main(int argc, char ** argv) {
 				printf("[MPI %d] Exiting.\n", world_rank);
 				break;
 			} else if (status.MPI_TAG == SEND_MODEL_FOR_RMSE_COMP) {
+				// Generate the values to compute RMSE against.
+				
+
 				// Process the data and return a value.
 				double sum  = 0.0;
 				double diff = 0.0;
