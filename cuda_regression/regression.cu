@@ -11,8 +11,8 @@
 #define MAX_THREADS_PER_BLOCK          = 1024
 #define MAX_THREADS_PER_MULTIPROCESSOR = 2048
 
-#define THREADS_PER_BLOCK_TARGET 128
-#define BLOCK_TARGET             160
+// #define THREADS_PER_BLOCK_TARGET 128
+// #define BLOCK_TARGET             1024
 
 using namespace std;
 
@@ -24,6 +24,9 @@ int   pointsPerThread;
 int   blocks;
 int   threads;
 
+int threadTarget;
+int blockTarget;
+
 float * d_Parameters; // Array where the parameters are copied before a call.
 float * d_FitData;    // The fit data to compute RMSE from.
 float * d_Sums;       // The array where partial sums are stored for error
@@ -31,6 +34,24 @@ float * d_Sums;       // The array where partial sums are stored for error
                       // sum of this array before returing,
 
 float * h_Sums; // Host copy of the sums.
+
+__device__ float fitFunction(float * p, float x) {
+	return p[0]  * -powf(x - 1.0/1.0,  2.0) + 
+		   p[1]  *  powf(x - 1.0/2.0,  2.0) + 
+		   p[2]  * -powf(x - 1.0/3.0,  2.0) + 
+		   p[3]  *  powf(x - 1.0/4.0,  3.0) + 
+		   p[4]  * -powf(x - 1.0/5.0,  2.0) + 
+		   p[5]  *  powf(x - 1.0/6.0,  2.0) + 
+		   p[6]  * -powf(x - 1.0/7.0,  2.0) + 
+		   p[7]  *  powf(x - 1.0/8.0,  3.0) + 
+		   p[8]  * -powf(x - 1.0/9.0,  2.0) + 
+		   p[9]  *  powf(x - 1.0/10.0, 2.0) + 
+		   p[10] * -powf(x - 1.0/11.0, 2.0) + 
+		   p[11] *  powf(x - 1.0/12.0, 3.0) + 
+		   p[12] * -powf(x - 1.0/13.0, 2.0) + 
+		   p[13] *  powf(x - 1.0/14.0, 2.0) + 
+		   p[14] * -powf(x - 1.0/15.0, 2.0); 
+}
 
 __global__ void computeRMSE(
 		float * params,         // Pointer to fit parameters.
@@ -58,26 +79,8 @@ __global__ void computeRMSE(
 	}
 }
 
-__device__ float fitFunction(float * parameters, float x) {
-	return p[0]  * -powf(x - 1.0/1.0,  2.0) + 
-		   p[1]  *  powf(x - 1.0/2.0,  2.0) + 
-		   p[2]  * -powf(x - 1.0/3.0,  2.0) + 
-		   p[3]  *  powf(x - 1.0/4.0,  3.0) + 
-		   p[4]  * -powf(x - 1.0/5.0,  2.0) + 
-		   p[5]  *  powf(x - 1.0/6.0,  2.0) + 
-		   p[6]  * -powf(x - 1.0/7.0,  2.0) + 
-		   p[7]  *  powf(x - 1.0/8.0,  3.0) + 
-		   p[8]  * -powf(x - 1.0/9.0,  2.0) + 
-		   p[9]  *  powf(x - 1.0/10.0, 2.0) + 
-		   p[10] * -powf(x - 1.0/11.0, 2.0) + 
-		   p[11] *  powf(x - 1.0/12.0, 3.0) + 
-		   p[12] * -powf(x - 1.0/13.0, 2.0) + 
-		   p[13] *  powf(x - 1.0/14.0, 2.0) + 
-		   p[14] * -powf(x - 1.0/15.0, 2.0); 
-}
 
-
-void configure(float lb, float ub, int p, float * data) {
+extern "C" void configure(float lb, float ub, int p, float * data, int thr, int bl) {
 	lowerBound = lb;
 	upperBound = ub;
 	points     = p;
@@ -86,19 +89,19 @@ void configure(float lb, float ub, int p, float * data) {
 
 	cudaMalloc(&d_Parameters, sizeof(float) * PARAMETER_COUNT);
 	cudaMalloc(&d_FitData,    sizeof(float) * points);
-	cudaMalloc(&d_Sums,       sizeof(float) * THREADS_PER_BLOCK_TARGET);
+	cudaMalloc(&d_Sums,       sizeof(float) * thr);
 
-	h_Sums = malloc(sizeof(float) * THREADS_PER_BLOCK_TARGET);
+	h_Sums = (float *)malloc(sizeof(float) * thr);
 
 	cudaMemcpy(d_FitData, data, sizeof(float) * points, cudaMemcpyHostToDevice);
 
 	// Here we determine the number of blocks and the
 	// number of data points to process per thread. These
 	// values are determined based on the size of the data
-	// and the desired number of threads per block (THREADS_PER_BLOCK_TARGET).
+	// and the desired number of threads per block (threads).
 
-	blocks  = BLOCK_TARGET;
-	threads = THREADS_PER_BLOCK_TARGET;
+	blocks  = bl;
+	threads = thr;
 
 	double ppt     = (double)points / (blocks * threads);
 	while (ppt != floor(ppt)) {
@@ -107,20 +110,22 @@ void configure(float lb, float ub, int p, float * data) {
 
 	pointsPerThread = floor(ppt);
 
-	printf("Blocks: %d, Threads: %d, Points/Thread: %d\n", 
-		blocks, threads, pointsPerThread);
+	printf("CUDA Parameters:\n");
+	printf("Blocks: %d\nThreads/Block: %d\nPoints/Thread: %d\nData Points: %d\n\n", 
+		blocks, threads, pointsPerThread, points);
 }
 
-void finish() {
+extern "C" void finish() {
 	cudaFree(d_Parameters);
 	cudaFree(d_FitData);
 	cudaFree(d_Sums);
 	free(h_Sums);
 }
 
-float getRMSE(float * parameters) {
-	cudaMemcpy(d_Parameters, parameters, sizeof(float) * points, cudaMemcpyHostToDevice);
-	cudaMemset(d_Sums, 0, sizeof(float) * THREADS_PER_BLOCK_TARGET);
+extern "C" float getRMSE(float * parameters) {
+	cudaMemcpy(
+		d_Parameters, parameters, sizeof(float) * PARAMETER_COUNT, cudaMemcpyHostToDevice);
+	cudaMemset(d_Sums, 0, sizeof(float) * threads);
 
 	computeRMSE<<<blocks, threads>>>(
 		d_Parameters,
@@ -132,13 +137,13 @@ float getRMSE(float * parameters) {
 	);
 
 	cudaMemcpy(
-		h_Sums, d_Sums, sizeof(float) * THREADS_PER_BLOCK_TARGET, cudaMemcpyDeviceToHost);
+		h_Sums, d_Sums, sizeof(float) * threads, cudaMemcpyDeviceToHost);
 
 
 	float sum = 0.0;
-	for (int i = 0; i < THREADS_PER_BLOCK_TARGET; ++i) {
+	for (int i = 0; i < threads; ++i) {
 		sum += h_Sums[i];
 	}
 
-	return sqrtf(sum);
+	return sqrtf(sum / (float)points);
 }

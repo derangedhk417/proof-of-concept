@@ -10,39 +10,33 @@ from ctypes import *
 # The function returns a 2-Tuple. The first member is the number
 # of MPI processes started and the second parameter is a dictionary
 # of imported functions. 
-def init(directory, name, args):
+def init(directory, name):
 	# Here we load the c library that will start the MPI processes
 	# and interface directly with the rank 0 process of the MPI world.
 	lib = ctl.load_library(name, directory)
 
-	# We need to load and configure the initialization function.
-	lib_init          = lib.init
-
-	# Specifies that the first (and only) argument is a (char *)
-	lib_init.argtypes = [c_char_p]
-
-	# Specifies that the return type is int
-	lib_init.restype  = ctypes.c_int
-
-
-	# Call the libary initialization function.
-	nProcesses = lib_init((args + '\0').encode())
-
 	functions = {}
 
-	cfg = lib.configureDataSize
-	cfg.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_int]
-	functions['configureDataSize'] = cfg
+	# We need to load and configure the initialization function.
+	configure = lib.configure
 
-	sendData = lib.sendData
-	sendData.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
-	functions['sendData'] = sendData
+	# Specifies that the first (and only) argument is a (char *)
+	configure.argtypes = [
+		c_float, 
+		c_float, 
+		c_int, 
+		ctl.ndpointer(dtype=c_float),
+		c_int,
+		c_int
+	]
 
-	compute = lib.computeRMSE
-	compute.argtypes = [ctl.ndpointer(dtype=ctypes.c_double)]
-	compute.restype  = ctypes.c_double
-	functions['computeRMSE'] = compute
+	functions['configure'] = configure
+	functions['finish']    = lib.finish
 
-	functions['finish'] = lib.finish
+	getRMSE = lib.getRMSE
+	getRMSE.argtypes = [ctl.ndpointer(dtype=c_float)]
+	getRMSE.restype  = c_float
 
-	return (nProcesses, functions)
+	functions['getRMSE'] = getRMSE
+
+	return functions
