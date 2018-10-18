@@ -38,7 +38,7 @@ guess_parameters = np.array([
 rng     = [-5.0, 5.0]
 points  = eval(sys.argv[1])
 blocks  = eval(sys.argv[2])
-threads = eval(sys.argv[2])
+threads = eval(sys.argv[3])
 
 def model(x, p):
 	return np.array(
