@@ -11,8 +11,23 @@
 #define MAX_THREADS_PER_BLOCK          = 1024
 #define MAX_THREADS_PER_MULTIPROCESSOR = 2048
 
-// #define THREADS_PER_BLOCK_TARGET 128
-// #define BLOCK_TARGET             1024
+// These values are all set in the command
+// line invocation of the compiler.
+// #define POINTS_PER_THREAD
+// #define BLOCKS
+// #define THREADS_PER_BLOCK
+// #define POINT_INCREMENT
+
+#define USE_LARGE_ARRAY
+#undef USE_LARGE_ARRAY
+
+#define USE_SMALL_ARRAY
+#undef USE_SMALL_ARRAY
+
+#define REDUCE_PER_BLOCK
+#undef REDUCE_PER_BLOCK
+#define SINGLE_THREAD_REDUCE
+#undef SINGLE_THREAD_REDUCE
 
 using namespace std;
 
@@ -53,34 +68,79 @@ __device__ float fitFunction(float * p, float x) {
 		   p[14] * -powf(x - 1.0/15.0, 2.0); 
 }
 
-__global__ void computeRMSE(
+#ifdef REDUCE_PER_BLOCK
+__shared__ float reduction[THREADS_PER_BLOCK];
+#endif
+
+template <int PPT> __global__ void computeRMSE(
 		float * params,         // Pointer to fit parameters.
 		float * fit,            // Pointer to data to fit.
 		float * sums,           // Pointer to array to put sums into.
-		float   lowerBound,     // Lower bound of the domain.
-		float   pointIncrement, // The distance between points in the domain.
-		int     pointsPerThread // Number of data points each thread should process.
+		float   lowerBound      // Lower bound of the domain.
 	) {
 
-	float threadLowerBound =  (blockDim.x * blockIdx.x + threadIdx.x) * 
-	                          pointIncrement * pointsPerThread;
-	      threadLowerBound += lowerBound;
+#ifdef REDUCE_PER_BLOCK
+	reduction[threadIdx.x] = 0.0;
+#endif
 
-	int fitIndex = (blockDim.x * blockIdx.x + threadIdx.x) * pointsPerThread;
+	float blockLowerBound  = (THREADS_PER_BLOCK * blockIdx.x) * POINT_INCREMENT * PPT;
+	float threadStartPoint = lowerBound + blockLowerBound + (threadIdx.x * POINT_INCREMENT);
+	int   threadStartIdx   = (THREADS_PER_BLOCK * blockIdx.x * PPT) + threadIdx.x;
 
-	for (int i = 0; i < pointsPerThread; ++i) {
-		float index_X = threadLowerBound + i * pointIncrement;
-		float val     = fitFunction(params, index_X) - fit[fitIndex + i];
+#pragma unroll
+	for (int i = 0; i < PPT; ++i) {
+		float index_X = threadStartPoint + i * POINT_INCREMENT * THREADS_PER_BLOCK;
+		float val     = 
+			fitFunction(params, index_X) - fit[threadStartIdx + (i * THREADS_PER_BLOCK)];
 		float result  = val * val;
 
-		float * sumAddr = &sums[threadIdx.x];
-
-		atomicAdd(sumAddr, result);
+	#ifdef USE_LARGE_ARRAY
+		sums[threadStartIdx + (i * THREADS_PER_BLOCK)] = result;
+	#else
+		#ifdef REDUCE_PER_BLOCK
+			reduction[threadIdx.x] += result;
+		#else
+			#ifdef USE_SMALL_ARRAY
+				float * sumAddr = &sums[(threadIdx.x % 128)];
+			#else
+				float * sumAddr = &sums[threadIdx.x];
+			#endif
+			
+			atomicAdd(sumAddr, result);
+		#endif
+		
+		
+	#endif
+		
 	}
+
+	#ifdef REDUCE_PER_BLOCK
+		#ifdef SINGLE_THREAD_REDUCE
+			if (threadIdx.x == 0) {
+				float sum = 0.0;
+				#pragma unroll
+				for (int i = 0; i < THREADS_PER_BLOCK; ++i) {
+					sum += reduction[i];
+				}
+
+				sums[blockIdx.x] = sum;
+			}
+		#else
+			atomicAdd(&sums[blockIdx.x], reduction[threadIdx.x]);
+		#endif
+	#endif
 }
 
 
 extern "C" void configure(float lb, float ub, int p, float * data, int thr, int bl) {
+	#ifdef USE_LARGE_ARRAY
+		printf("NOTE: File was compiled with USE_LARGE_ARRAY on.\n");
+	#endif
+
+	#ifdef USE_SMALL_ARRAY
+		printf("NOTE: File was compiled with USE_SMALL_ARRAY on.\n");
+	#endif
+
 	lowerBound = lb;
 	upperBound = ub;
 	points     = p;
@@ -89,9 +149,24 @@ extern "C" void configure(float lb, float ub, int p, float * data, int thr, int 
 
 	cudaMalloc(&d_Parameters, sizeof(float) * PARAMETER_COUNT);
 	cudaMalloc(&d_FitData,    sizeof(float) * points);
-	cudaMalloc(&d_Sums,       sizeof(float) * thr);
 
-	h_Sums = (float *)malloc(sizeof(float) * thr);
+	#ifdef USE_LARGE_ARRAY
+		cudaMalloc(&d_Sums, sizeof(float) * points);
+		h_Sums = (float *)malloc(sizeof(float) * points);
+	#else
+		#ifdef REDUCE_PER_BLOCK
+			cudaMalloc(&d_Sums, sizeof(float) * bl);
+			h_Sums = (float *)malloc(sizeof(float) * bl);
+		#else
+			#ifdef USE_SMALL_ARRAY
+				cudaMalloc(&d_Sums, sizeof(float) * (thr / 8));
+				h_Sums = (float *)malloc(sizeof(float) * (thr / 8));
+			#else
+				cudaMalloc(&d_Sums, sizeof(float) * thr);
+				h_Sums = (float *)malloc(sizeof(float) * thr);
+			#endif
+		#endif
+	#endif
 
 	cudaMemcpy(d_FitData, data, sizeof(float) * points, cudaMemcpyHostToDevice);
 
@@ -100,19 +175,19 @@ extern "C" void configure(float lb, float ub, int p, float * data, int thr, int 
 	// values are determined based on the size of the data
 	// and the desired number of threads per block (threads).
 
-	blocks  = bl;
-	threads = thr;
+	// blocks  = bl;
+	// threads = thr;
 
-	double ppt     = (double)points / (blocks * threads);
-	while (ppt != floor(ppt)) {
-		ppt = (double)points / (++blocks * threads);
-	}
+	// double ppt     = (double)points / (blocks * threads);
+	// while (ppt != floor(ppt)) {
+	// 	ppt = (double)points / (++blocks * threads);
+	// }
 
-	pointsPerThread = floor(ppt);
+	// pointsPerThread = floor(ppt);
 
-	printf("CUDA Parameters:\n");
-	printf("Blocks: %d\nThreads/Block: %d\nPoints/Thread: %d\nData Points: %d\n\n", 
-		blocks, threads, pointsPerThread, points);
+	// printf("CUDA Parameters:\n");
+	// printf("Blocks: %d\nThreads/Block: %d\nPoints/Thread: %d\nData Points: %d\n\n", 
+	// 	BLOCKS, THREADS_PER_BLOCK, POINTS_PER_THREAD, points);
 }
 
 extern "C" void finish() {
@@ -125,23 +200,70 @@ extern "C" void finish() {
 extern "C" float getRMSE(float * parameters) {
 	cudaMemcpy(
 		d_Parameters, parameters, sizeof(float) * PARAMETER_COUNT, cudaMemcpyHostToDevice);
-	cudaMemset(d_Sums, 0, sizeof(float) * threads);
 
-	computeRMSE<<<blocks, threads>>>(
+	#ifdef USE_LARGE_ARRAY
+		cudaMemset(d_Sums, 0, sizeof(float) * points);
+	#else
+		#ifdef REDUCE_PER_BLOCK
+			#ifndef SINGLE_THREAD_REDUCE
+				// If we are using a single thread at the end to 
+				// complete the reduction then we don't need to zero
+				// this.
+				cudaMemset(d_Sums, 0, sizeof(float) * BLOCKS);
+			#endif
+		#else
+			#ifdef USE_SMALL_ARRAY
+				cudaMemset(d_Sums, 0, sizeof(float) * (THREADS_PER_BLOCK / 8));
+			#else
+				cudaMemset(d_Sums, 0, sizeof(float) * THREADS_PER_BLOCK);
+			#endif
+		#endif
+	#endif
+	
+
+	computeRMSE<POINTS_PER_THREAD> <<<BLOCKS, THREADS_PER_BLOCK>>>(
 		d_Parameters,
 		d_FitData,
 		d_Sums,
-		lowerBound,
-		pointIncrement,
-		pointsPerThread
+		lowerBound
 	);
 
-	cudaMemcpy(
-		h_Sums, d_Sums, sizeof(float) * threads, cudaMemcpyDeviceToHost);
+	#ifdef USE_LARGE_ARRAY
+		cudaMemcpy(
+			h_Sums, d_Sums, sizeof(float) * points, cudaMemcpyDeviceToHost);
+	#else
+		#ifdef REDUCE_PER_BLOCK
+			cudaMemcpy(
+					h_Sums, d_Sums, sizeof(float) * BLOCKS, cudaMemcpyDeviceToHost);
+		#else
+			#ifdef USE_SMALL_ARRAY
+				cudaMemcpy(
+					h_Sums, d_Sums, sizeof(float) * (THREADS_PER_BLOCK / 8), cudaMemcpyDeviceToHost);
+			#else
+				cudaMemcpy(
+					h_Sums, d_Sums, sizeof(float) * THREADS_PER_BLOCK, cudaMemcpyDeviceToHost);
+			#endif
+		#endif
+	#endif
+
+	
 
 
 	float sum = 0.0;
-	for (int i = 0; i < threads; ++i) {
+#ifdef USE_LARGE_ARRAY
+	for (int i = 0; i < points; ++i) {
+#else
+	#ifdef REDUCE_PER_BLOCK
+		for (int i = 0; i < BLOCKS; ++i) {
+	#else
+		#ifdef USE_SMALL_ARRAY
+			for (int i = 0; i < (THREADS_PER_BLOCK / 8); ++i) {
+		#else
+			for (int i = 0; i < THREADS_PER_BLOCK; ++i) {
+		#endif
+	#endif
+	
+#endif
 		sum += h_Sums[i];
 	}
 

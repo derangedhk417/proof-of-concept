@@ -12,10 +12,46 @@ from random import uniform as randf
 from matplotlib import pyplot as plt
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D
+from subprocess import call
 import math
 import comm
 
 np.random.seed(1010)
+
+rng     = [-5.0, 5.0]
+points  = eval(sys.argv[1])
+blocks  = eval(sys.argv[2])
+threads = eval(sys.argv[3])
+
+define_string = 'POINTS_PER_THREAD=%d,BLOCKS=%d,THREADS_PER_BLOCK=%d,POINT_INCREMENT=%f'%(
+	int(points / (threads * blocks)),
+	blocks,
+	threads,
+	(float(rng[1]) - float(rng[0])) / float(points)
+)
+
+print("COMPILER DEFINE DIRECTIVES:")
+params = define_string.split(',')
+for p in params:
+	s = p.split('=')
+	print('\t#define %s %s'%(s[0], s[1]))
+print('\n')
+
+compiler_args = [
+	'nvcc',
+	'--shared',
+	'regression.cu',
+	'-o',
+	'regression.so',
+	'-D',
+	define_string,
+	'--compiler-options',
+	'-shared,-fPIC,-lm,-lpthread,-lrt'
+]
+
+print("Compiling . . . ")
+call(compiler_args)
+print("Done\n")
 
 functions = comm.init('./', 'regression.so')
 
@@ -35,10 +71,7 @@ guess_parameters = np.array([
 	2.0 , -3.7,  3.7,  7.0 ,  3.0
 ], np.float32)
 
-rng     = [-5.0, 5.0]
-points  = eval(sys.argv[1])
-blocks  = eval(sys.argv[2])
-threads = eval(sys.argv[3])
+
 
 def model(x, p):
 	return np.array(
